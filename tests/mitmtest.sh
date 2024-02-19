@@ -18,8 +18,11 @@ if ! python3 -c 'import sys; assert sys.version_info >= (3, 9)'; then
   exit 1
 fi
 python3 -m venv "$venv_dir"
-"$venv_dir/bin/pip" install --disable-pip-version-check wheel >/dev/null
-"$venv_dir/bin/pip" install --disable-pip-version-check mitmproxy >/dev/null
+
+export PIP_DISABLE_PIP_VERSION_CHECK=1
+"$venv_dir/bin/pip" install wheel >/dev/null
+"$venv_dir/bin/pip" install --upgrade pip >/dev/null
+"$venv_dir/bin/pip" install mitmproxy >/dev/null
 
 docker_image=$(docker build -q ../)
 
@@ -69,19 +72,19 @@ fi
 printf '\n\n\n===== mitm pip test =====\n\n\n\n'
 
 # check that mitmdump prevents pip installs from upstream pypi
-REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --disable-pip-version-check --no-cache-dir --force-reinstall mypy
+REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --no-cache-dir --force-reinstall mypy
 if [ $? -ne 1 ]; then
   print_bold_red "installing mypy from upstream unexpectedly succeeded (should be blocked by mitmdump)"
   exit 1
 fi
 # check that mitmdump prevents pip installs of numpy from pypi cache
-REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --disable-pip-version-check --no-cache-dir --force-reinstall --index-url=http://localhost/simple numpy
+REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --no-cache-dir --force-reinstall --index-url=http://localhost/simple numpy
 if [ $? -ne 1 ]; then
   print_bold_red "installing numpy from pypi cache unexpectedly succeeded (should be blocked by mitmdump)"
   exit 1
 fi
 # but everything works for other packages if we use the pypi cache
-REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --disable-pip-version-check --no-cache-dir --force-reinstall --index-url=http://localhost/simple mypy
+REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --no-cache-dir --force-reinstall --index-url=http://localhost/simple mypy
 # shellcheck disable=SC2181
 if [ $? -ne 0 ]; then
   print_bold_red "failed to install mypy from pypi cache"
@@ -89,7 +92,7 @@ if [ $? -ne 0 ]; then
 fi
 
 # TODO: check that the pypi cache is actually getting cache hits, should be visible in the access log when we run the following
-REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --disable-pip-version-check --no-cache-dir --force-reinstall --index-url=http://localhost/simple mypy
+REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/pip" install --no-cache-dir --force-reinstall --index-url=http://localhost/simple mypy
 
 # check that installing mypy did not invalidate the cache (the requests use different Accept headers)
 if ! curl -s -I -X GET http://localhost/simple/mypy/ | grep -q 'X-Pypi-Cache: HIT'; then
