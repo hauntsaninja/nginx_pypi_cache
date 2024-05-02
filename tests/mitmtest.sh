@@ -20,21 +20,20 @@ fi
 python3 -m venv "$venv_dir"
 
 export PIP_DISABLE_PIP_VERSION_CHECK=1
-"$venv_dir/bin/pip" install wheel >/dev/null
-"$venv_dir/bin/pip" install --upgrade pip >/dev/null
-"$venv_dir/bin/pip" install mitmproxy >/dev/null
+"$venv_dir/bin/pip" install uv >/dev/null
+"$venv_dir/bin/python" -m uv pip install --python "$venv_dir/bin/python" --upgrade wheel pip mitmproxy >/dev/null
 
 docker_image=$(docker build -q ../)
 
 # kill background jobs on exit
-trap 'echo "cleaning up..."; jobs -p | xargs -r kill; sleep 1' SIGTERM EXIT
+trap 'echo "cleaning up..."; docker kill nginx-pypi-cache; jobs -p | xargs -r kill; sleep 1' SIGTERM EXIT
 
 # run mitmdump on unprivileged port
 MITM=12345
 "$venv_dir/bin/mitmdump" -s pypi_intercept.py -p $MITM &
 
 # run the pypi cache on port 80
-docker run -p 80:80 --rm "$docker_image" &
+docker run --name nginx-pypi-cache -p 80:80 --rm "$docker_image" &
 
 # wait for everything to come up
 sleep 5
@@ -97,6 +96,28 @@ REQUESTS_CA_BUNDLE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MIT
 # check that installing mypy did not invalidate the cache (the requests use different Accept headers)
 if ! curl -s -I -X GET http://localhost/simple/mypy/ | grep -q 'X-Pypi-Cache: HIT'; then
   print_bold_red "mypy response was not cached"
+  exit 1
+fi
+
+printf '\n\n\n===== mitm uv test =====\n\n\n\n'
+
+# check that mitmdump prevents pip installs from upstream pypi
+SSL_CERT_FILE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/python" -m uv pip install --python "$venv_dir/bin/python" --no-cache-dir --force-reinstall mypy
+if [ $? -ne 2 ]; then
+  print_bold_red "installing mypy from upstream unexpectedly succeeded (should be blocked by mitmdump)"
+  exit 1
+fi
+# check that mitmdump prevents pip installs of numpy from pypi cache
+SSL_CERT_FILE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/python" -m uv pip install --python "$venv_dir/bin/python" --no-cache-dir--force-reinstall --index-url=http://localhost/simple numpy
+if [ $? -ne 2 ]; then
+  print_bold_red "installing numpy from pypi cache unexpectedly succeeded (should be blocked by mitmdump)"
+  exit 1
+fi
+# but everything works for other packages if we use the pypi cache
+SSL_CERT_FILE=~/.mitmproxy/mitmproxy-ca.pem ALL_PROXY=http://localhost:$MITM/ "$venv_dir/bin/python" -m uv pip install --python "$venv_dir/bin/python" --no-cache-dir --force-reinstall --index-url=http://localhost/simple mypy
+# shellcheck disable=SC2181
+if [ $? -ne 0 ]; then
+  print_bold_red "failed to install mypy from pypi cache"
   exit 1
 fi
 
