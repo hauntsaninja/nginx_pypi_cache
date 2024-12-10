@@ -23,6 +23,16 @@ export PIP_INDEX_URL=http://localhost/simple
 pip install mypy
 ```
 
+## Github container registry
+
+To pull the latest version from the Github container registry:
+
+```bash
+docker pull ghcr.io/hauntsaninja/nginx_pypi_cache:latest
+```
+
+See https://github.com/hauntsaninja/nginx_pypi_cache/pkgs/container/nginx_pypi_cache
+
 ## Troubleshooting
 
 It turns out it's surprisingly easy to mess something up and not actually end up proxying
